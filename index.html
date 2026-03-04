@@ -3,65 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gear Monitor Pro - Sensitive</title>
+    <title>Gear Monitor - Unrestricted</title>
     <style>
-        body { 
-            background: #000; 
-            color: #ccc; 
-            margin: 0; 
-            font-family: 'Segoe UI', sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            height: 100vh; 
-            overflow: hidden; 
-        }
-        header { 
-            padding: 20px; 
-            background: #111; 
-            border-bottom: 2px solid #333; 
-            text-align: center;
-        }
+        body { background: #000; color: #ccc; margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { padding: 20px; background: #111; border-bottom: 2px solid #333; text-align: center; }
         h2 { margin: 0; font-size: 20px; color: #fcfdbf; letter-spacing: 2px; }
-        
-        .dashboard { 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: space-evenly; 
-            flex-grow: 1; 
-            padding: 20px;
-        }
+        .dashboard { display: flex; flex-direction: column; justify-content: space-evenly; flex-grow: 1; padding: 20px; }
         .panel { text-align: center; }
-        .panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; }
-        
-        .panel-value { font-size: 90px; font-weight: bold; color: #0ff; text-shadow: 0 0 20px rgba(0,255,255,0.4); line-height: 1; }
-        .panel-value.gear { color: #ffcc00; font-size: 150px; text-shadow: 0 0 30px rgba(255,204,0,0.5); }
+        .panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 3px; }
+        .panel-value { font-size: 90px; font-weight: bold; color: #0ff; line-height: 1; }
+        .panel-value.gear { color: #ffcc00; font-size: 150px; }
         .panel-value.db { color: #ff3366; font-size: 80px; }
         .unit { font-size: 24px; color: #444; margin-left: 10px; }
-
-        #start-btn { 
-            position: fixed; 
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%); 
-            padding: 25px 60px; 
-            font-size: 24px; 
-            font-weight: bold;
-            background: #0f0; 
-            color: #000; 
-            border: none; 
-            border-radius: 50px; 
-            cursor: pointer; 
-            z-index: 100; 
-            box-shadow: 0 0 40px rgba(0,255,0,0.4);
-        }
+        #start-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 25px 60px; font-size: 24px; font-weight: bold; background: #0f0; color: #000; border: none; border-radius: 50px; cursor: pointer; z-index: 100; }
     </style>
 </head>
 <body>
 
-<button id="start-btn">START MONITOR</button>
+<button id="start-btn">START TEST</button>
 
 <header>
-    <h2>GEAR MONITOR PRO</h2>
+    <h2>GEAR MONITOR - TEST MODE</h2>
 </header>
 
 <div class="dashboard">
@@ -69,15 +31,13 @@
         <div class="panel-title">Current Gear</div>
         <div><span id="gear-val" class="panel-value gear">-</span></div>
     </div>
-    
     <div class="panel">
-        <div class="panel-title">Peak Frequency</div>
+        <div class="panel-title">Frequency (Raw)</div>
         <div><span id="hz-val" class="panel-value">0</span><span class="unit">Hz</span></div>
     </div>
-
     <div class="panel">
-        <div class="panel-title">Volume Level</div>
-        <div><span id="db-val" class="panel-value db">0</span><span class="unit">dB</span></div>
+        <div class="panel-title">Volume (Raw)</div>
+        <div><span id="db-val" class="panel-value db">0</span><span class="unit">val</span></div>
     </div>
 </div>
 
@@ -85,11 +45,11 @@
     let audioContext, analyser, dataArray;
     let candidateGear = "-", candidateStartTime = 0, currentGear = "-";
 
-    // --- TUNING PARAMETERS ---
-    const NOISE_GATE_THRESHOLD = 35; // Lower = more sensitive; Higher = ignores more background noise
-    const SENSITIVITY_BOOST = 1.8;   // Multiplier to make dB numbers look realistic
+    // --- RESTRICTIONS REMOVED ---
+    const NOISE_GATE_THRESHOLD = 0; // 關閉噪音閘門 (0 = 接收所有聲音)
+    const SENSITIVITY_BOOST = 1.0;   // 原始倍率
     const FREQ_TOLERANCE = 4.0;
-    const HOLD_TIME_MS = 1500; 
+    const HOLD_TIME_MS = 1000;      // 縮短判定時間至 1 秒
 
     document.getElementById('start-btn').onclick = function() {
         this.style.display = 'none';
@@ -98,73 +58,68 @@
 
     async function initAudio() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: false, // 關閉回音消除，避免過濾引擎聲
+                    noiseSuppression: false, // 關閉噪聲抑制，避免過濾引擎聲
+                    autoGainControl: true    // 開啟自動增益，嘗試放大收音
+                } 
+            });
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // 確保 AudioContext 在點擊後啟動
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 4096; 
-            analyser.smoothingTimeConstant = 0.5; // Faster response for dB meter
+            analyser.smoothingTimeConstant = 0; // 關閉平滑化，獲取最即時的數據
             
             const source = audioContext.createMediaStreamSource(stream);
             source.connect(analyser);
 
             dataArray = new Uint8Array(analyser.frequencyBinCount);
             update();
-        } catch (err) { alert("Mic Access Error: " + err); }
+        } catch (err) { alert("Mic Error: " + err); }
     }
 
     function update() {
         analyser.getByteFrequencyData(dataArray);
 
-        // 1. Calculate Peak Volume (Much more accurate than average)
+        // 1. 取得最強的原始音量數值 (0-255)
         let maxByte = 0;
         for (let i = 0; i < dataArray.length; i++) {
             if (dataArray[i] > maxByte) maxByte = dataArray[i];
         }
-        
-        // Scale 0-255 to a 0-100 range with a boost
-        let currentDb = Math.round((maxByte / 255) * 100 * SENSITIVITY_BOOST);
-        if (currentDb > 100) currentDb = 100; // Cap at 100
-        
-        document.getElementById('db-val').innerText = currentDb;
+        document.getElementById('db-val').innerText = maxByte;
 
-        // 2. Find Peak Frequency
+        // 2. 尋找最強頻率 (全頻譜搜尋，不設限 40-500Hz)
         let maxVal = -1, maxIndex = -1;
-        const binSize = audioContext.sampleRate / analyser.fftSize;
-        const lowLimit = Math.floor(40 / binSize);
-        const highLimit = Math.floor(500 / binSize);
-
-        for (let i = lowLimit; i < highLimit; i++) {
+        for (let i = 0; i < dataArray.length; i++) {
             if (dataArray[i] > maxVal) { maxVal = dataArray[i]; maxIndex = i; }
         }
 
         const hz = maxIndex * (audioContext.sampleRate / 2 / dataArray.length);
-        
-        // --- IMPROVED NOISE GATE ---
-        let detectedHz = 0;
-        if (currentDb > NOISE_GATE_THRESHOLD) {
-            detectedHz = hz;
-        }
-        document.getElementById('hz-val').innerText = Math.round(detectedHz);
+        document.getElementById('hz-val').innerText = Math.round(hz);
 
-        // 3. Gear Logic
-        let detectedGear = "-";
-        if (detectedHz === 0) {
-            detectedGear = "0";
-        } else {
-            if (Math.abs(detectedHz - 84) <= FREQ_TOLERANCE || Math.abs(detectedHz - 94) <= FREQ_TOLERANCE) detectedGear = "3";
-            else if (Math.abs(detectedHz - 125) <= FREQ_TOLERANCE || Math.abs(detectedHz - 133) <= FREQ_TOLERANCE) detectedGear = "4";
-            else if (Math.abs(detectedHz - 148) <= FREQ_TOLERANCE) detectedGear = "5";
+        // 3. 檔位邏輯 (保持原樣)
+        let dG = "-";
+        if (hz === 0) dG = "0";
+        else {
+            if (Math.abs(hz - 84) <= FREQ_TOLERANCE || Math.abs(hz - 94) <= FREQ_TOLERANCE) dG = "3";
+            else if (Math.abs(hz - 125) <= FREQ_TOLERANCE || Math.abs(hz - 133) <= FREQ_TOLERANCE) dG = "4";
+            else if (Math.abs(hz - 148) <= FREQ_TOLERANCE) dG = "5";
         }
 
-        if (detectedGear !== "-") {
-            if (candidateGear === detectedGear) {
-                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) currentGear = detectedGear;
+        if (dG !== "-") {
+            if (candidateGear === dG) {
+                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) currentGear = dG;
             } else {
-                candidateGear = detectedGear;
+                candidateGear = dG;
                 candidateStartTime = Date.now();
             }
         }
-
         document.getElementById('gear-val').innerText = currentGear;
         requestAnimationFrame(update);
     }
