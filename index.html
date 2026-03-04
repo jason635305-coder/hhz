@@ -3,26 +3,57 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gear Monitor Pro + dB</title>
+    <title>Gear Monitor Pro</title>
     <style>
-        body { background: #000; color: #ccc; margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        header { padding: 15px; background: #111; border-bottom: 2px solid #333; display: flex; justify-content: space-between; align-items: center; }
-        h2 { margin: 0; font-size: 18px; color: #fcfdbf; }
-        .status { font-size: 14px; color: #0f0; display: flex; align-items: center; gap: 5px; }
-        .dot { width: 8px; height: 8px; background: #0f0; border-radius: 50%; box-shadow: 0 0 5px #0f0; }
+        body { 
+            background: #000; 
+            color: #ccc; 
+            margin: 0; 
+            font-family: 'Segoe UI', sans-serif; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            overflow: hidden; 
+        }
+        header { 
+            padding: 20px; 
+            background: #111; 
+            border-bottom: 2px solid #333; 
+            text-align: center;
+        }
+        h2 { margin: 0; font-size: 20px; color: #fcfdbf; letter-spacing: 2px; }
         
-        .dashboard { display: flex; flex-direction: column; justify-content: space-around; flex-grow: 1; }
-        .panel { text-align: center; padding: 10px; border-bottom: 1px solid #222; }
-        .panel:last-child { border-bottom: none; }
-        .panel-title { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 2px; }
+        .dashboard { 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: space-evenly; 
+            flex-grow: 1; 
+            padding: 20px;
+        }
+        .panel { text-align: center; }
+        .panel-title { font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 10px; }
         
-        .panel-value { font-size: 70px; font-weight: bold; color: #0ff; text-shadow: 0 0 15px rgba(0,255,255,0.4); }
-        .panel-value.gear { color: #ffcc00; font-size: 100px; }
-        .panel-value.db { color: #ff3366; }
-        .unit { font-size: 18px; color: #555; margin-left: 5px; }
+        .panel-value { font-size: 90px; font-weight: bold; color: #0ff; text-shadow: 0 0 20px rgba(0,255,255,0.4); line-height: 1; }
+        .panel-value.gear { color: #ffcc00; font-size: 150px; text-shadow: 0 0 30px rgba(255,204,0,0.5); }
+        .panel-value.db { color: #ff3366; font-size: 80px; }
+        .unit { font-size: 24px; color: #444; margin-left: 10px; }
 
-        #visualizer { width: 100%; height: 80px; background: #050505; border-top: 1px solid #333; }
-        #start-btn { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 40px; font-size: 22px; background: #0f0; color: #000; border: none; border-radius: 50px; cursor: pointer; z-index: 100; font-weight: bold; }
+        #start-btn { 
+            position: fixed; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            padding: 25px 60px; 
+            font-size: 24px; 
+            font-weight: bold;
+            background: #0f0; 
+            color: #000; 
+            border: none; 
+            border-radius: 50px; 
+            cursor: pointer; 
+            z-index: 100; 
+            box-shadow: 0 0 40px rgba(0,255,0,0.4);
+        }
     </style>
 </head>
 <body>
@@ -31,38 +62,37 @@
 
 <header>
     <h2>GEAR MONITOR PRO</h2>
-    <div id="status-box" style="display:none" class="status"><span class="dot"></span> LIVE</div>
 </header>
 
 <div class="dashboard">
     <div class="panel">
-        <div class="panel-title">Gear</div>
+        <div class="panel-title">Current Gear</div>
         <div><span id="gear-val" class="panel-value gear">-</span></div>
     </div>
+    
     <div class="panel">
-        <div class="panel-title">Frequency</div>
+        <div class="panel-title">Peak Frequency</div>
         <div><span id="hz-val" class="panel-value">0</span><span class="unit">Hz</span></div>
     </div>
+
     <div class="panel">
-        <div class="panel-title">Volume</div>
+        <div class="panel-title">Volume Level</div>
         <div><span id="db-val" class="panel-value db">0</span><span class="unit">dB</span></div>
     </div>
 </div>
 
-<canvas id="visualizer"></canvas>
-
 <script>
-    let audioContext, analyser, dataArray, canvas, canvasCtx;
+    let audioContext, analyser, dataArray;
     let candidateGear = "-", candidateStartTime = 0, currentGear = "-";
 
     // --- ADJUSTABLE PARAMETERS ---
-    const NOISE_GATE_DB = 40; // Anything below 40dB will be ignored (0 Hz)
+    const NOISE_GATE_DB = 45; // Adjust this: Higher = ignores more noise
     const FREQ_TOLERANCE = 4.0;
     const HOLD_TIME_MS = 1500; 
 
-    document.getElementById('start-btn').onclick = function() {
-        this.style.display = 'none';
-        document.getElementById('status-box').style.display = 'flex';
+    const btn = document.getElementById('start-btn');
+    btn.onclick = function() {
+        btn.style.display = 'none';
         initAudio();
     };
 
@@ -71,36 +101,35 @@
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
-            analyser.fftSize = 4096;
-            analyser.smoothingTimeConstant = 0.8; // Makes the DB meter smoother
+            analyser.fftSize = 4096; 
+            analyser.smoothingTimeConstant = 0.8; 
             
-            audioContext.createMediaStreamSource(stream).connect(analyser);
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+
             dataArray = new Uint8Array(analyser.frequencyBinCount);
-            
-            canvas = document.getElementById('visualizer');
-            canvasCtx = canvas.getContext('2d');
-            canvas.width = window.innerWidth;
-            canvas.height = 80;
-            
             update();
-        } catch (err) { alert("Mic Access Error: " + err); }
+        } catch (err) {
+            alert("Microphone Access Error: " + err);
+        }
     }
 
     function update() {
         analyser.getByteFrequencyData(dataArray);
 
-        // 1. Calculate Volume in dB
-        let sum = 0;
+        // 1. Calculate Decibels (Volume)
+        let values = 0;
         for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
+            values += dataArray[i];
         }
-        let average = sum / dataArray.length;
-        // Map 0-255 to a rough 0-100 dB scale for display
-        let currentDb = Math.round((average / 255) * 100); 
+        let average = values / dataArray.length;
+        // Convert the byte data (0-255) into a readable dB display (approx 0-100)
+        let currentDb = Math.round((average / 255) * 100);
         document.getElementById('db-val').innerText = currentDb;
 
         // 2. Find Peak Frequency
-        let maxVal = -1, maxIndex = -1;
+        let maxVal = -1;
+        let maxIndex = -1;
         const binSize = audioContext.sampleRate / analyser.fftSize;
         const lowLimit = Math.floor(40 / binSize);
         const highLimit = Math.floor(500 / binSize);
@@ -112,10 +141,12 @@
             }
         }
 
-        const hz = maxIndex * (audioContext.sampleRate / 2 / dataArray.length);
+        const nyquist = audioContext.sampleRate / 2;
+        const hz = maxIndex * (nyquist / dataArray.length);
         
         // --- NOISE GATE LOGIC ---
         let detectedHz = 0;
+        // Only show frequency if the volume is above the threshold
         if (currentDb > NOISE_GATE_DB) {
             detectedHz = hz;
         }
@@ -126,31 +157,27 @@
         if (detectedHz === 0) {
             detectedGear = "0";
         } else {
+            // Gear 3: 84Hz or 94Hz
             if (Math.abs(detectedHz - 84) <= FREQ_TOLERANCE || Math.abs(detectedHz - 94) <= FREQ_TOLERANCE) detectedGear = "3";
+            // Gear 4: 125Hz or 133Hz
             else if (Math.abs(detectedHz - 125) <= FREQ_TOLERANCE || Math.abs(detectedHz - 133) <= FREQ_TOLERANCE) detectedGear = "4";
+            // Gear 5: 148Hz
             else if (Math.abs(detectedHz - 148) <= FREQ_TOLERANCE) detectedGear = "5";
         }
 
+        // Stability check (remains the same as your project requirement)
         if (detectedGear !== "-") {
             if (candidateGear === detectedGear) {
-                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) currentGear = detectedGear;
+                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) {
+                    currentGear = detectedGear;
+                }
             } else {
                 candidateGear = detectedGear;
                 candidateStartTime = Date.now();
             }
         }
+
         document.getElementById('gear-val').innerText = currentGear;
-        
-        // 4. Draw Visualizer
-        canvasCtx.fillStyle = '#050505';
-        canvasCtx.fillRect(0,0,canvas.width,canvas.height);
-        const barWidth = canvas.width / 100;
-        for (let i=0; i<100; i++) {
-            let h = dataArray[i] / 3;
-            canvasCtx.fillStyle = currentDb > NOISE_GATE_DB ? '#0ff' : '#333';
-            canvasCtx.fillRect(i * barWidth, canvas.height - h, barWidth - 1, h);
-        }
-        
         requestAnimationFrame(update);
     }
 </script>
