@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gear Monitor Pro</title>
+    <title>Gear Monitor Pro - Sensitive</title>
     <style>
         body { 
             background: #000; 
@@ -85,14 +85,14 @@
     let audioContext, analyser, dataArray;
     let candidateGear = "-", candidateStartTime = 0, currentGear = "-";
 
-    // --- ADJUSTABLE PARAMETERS ---
-    const NOISE_GATE_DB = 45; // Adjust this: Higher = ignores more noise
+    // --- TUNING PARAMETERS ---
+    const NOISE_GATE_THRESHOLD = 35; // Lower = more sensitive; Higher = ignores more background noise
+    const SENSITIVITY_BOOST = 1.8;   // Multiplier to make dB numbers look realistic
     const FREQ_TOLERANCE = 4.0;
     const HOLD_TIME_MS = 1500; 
 
-    const btn = document.getElementById('start-btn');
-    btn.onclick = function() {
-        btn.style.display = 'none';
+    document.getElementById('start-btn').onclick = function() {
+        this.style.display = 'none';
         initAudio();
     };
 
@@ -102,52 +102,46 @@
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 4096; 
-            analyser.smoothingTimeConstant = 0.8; 
+            analyser.smoothingTimeConstant = 0.5; // Faster response for dB meter
             
             const source = audioContext.createMediaStreamSource(stream);
             source.connect(analyser);
 
             dataArray = new Uint8Array(analyser.frequencyBinCount);
             update();
-        } catch (err) {
-            alert("Microphone Access Error: " + err);
-        }
+        } catch (err) { alert("Mic Access Error: " + err); }
     }
 
     function update() {
         analyser.getByteFrequencyData(dataArray);
 
-        // 1. Calculate Decibels (Volume)
-        let values = 0;
+        // 1. Calculate Peak Volume (Much more accurate than average)
+        let maxByte = 0;
         for (let i = 0; i < dataArray.length; i++) {
-            values += dataArray[i];
+            if (dataArray[i] > maxByte) maxByte = dataArray[i];
         }
-        let average = values / dataArray.length;
-        // Convert the byte data (0-255) into a readable dB display (approx 0-100)
-        let currentDb = Math.round((average / 255) * 100);
+        
+        // Scale 0-255 to a 0-100 range with a boost
+        let currentDb = Math.round((maxByte / 255) * 100 * SENSITIVITY_BOOST);
+        if (currentDb > 100) currentDb = 100; // Cap at 100
+        
         document.getElementById('db-val').innerText = currentDb;
 
         // 2. Find Peak Frequency
-        let maxVal = -1;
-        let maxIndex = -1;
+        let maxVal = -1, maxIndex = -1;
         const binSize = audioContext.sampleRate / analyser.fftSize;
         const lowLimit = Math.floor(40 / binSize);
         const highLimit = Math.floor(500 / binSize);
 
         for (let i = lowLimit; i < highLimit; i++) {
-            if (dataArray[i] > maxVal) {
-                maxVal = dataArray[i];
-                maxIndex = i;
-            }
+            if (dataArray[i] > maxVal) { maxVal = dataArray[i]; maxIndex = i; }
         }
 
-        const nyquist = audioContext.sampleRate / 2;
-        const hz = maxIndex * (nyquist / dataArray.length);
+        const hz = maxIndex * (audioContext.sampleRate / 2 / dataArray.length);
         
-        // --- NOISE GATE LOGIC ---
+        // --- IMPROVED NOISE GATE ---
         let detectedHz = 0;
-        // Only show frequency if the volume is above the threshold
-        if (currentDb > NOISE_GATE_DB) {
+        if (currentDb > NOISE_GATE_THRESHOLD) {
             detectedHz = hz;
         }
         document.getElementById('hz-val').innerText = Math.round(detectedHz);
@@ -157,20 +151,14 @@
         if (detectedHz === 0) {
             detectedGear = "0";
         } else {
-            // Gear 3: 84Hz or 94Hz
             if (Math.abs(detectedHz - 84) <= FREQ_TOLERANCE || Math.abs(detectedHz - 94) <= FREQ_TOLERANCE) detectedGear = "3";
-            // Gear 4: 125Hz or 133Hz
             else if (Math.abs(detectedHz - 125) <= FREQ_TOLERANCE || Math.abs(detectedHz - 133) <= FREQ_TOLERANCE) detectedGear = "4";
-            // Gear 5: 148Hz
             else if (Math.abs(detectedHz - 148) <= FREQ_TOLERANCE) detectedGear = "5";
         }
 
-        // Stability check (remains the same as your project requirement)
         if (detectedGear !== "-") {
             if (candidateGear === detectedGear) {
-                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) {
-                    currentGear = detectedGear;
-                }
+                if (Date.now() - candidateStartTime >= HOLD_TIME_MS) currentGear = detectedGear;
             } else {
                 candidateGear = detectedGear;
                 candidateStartTime = Date.now();
